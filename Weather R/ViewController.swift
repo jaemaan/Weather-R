@@ -12,10 +12,14 @@ class WeatherViewController: UIViewController {
     // 배경 이미지 뷰
     let backgroundImageView: UIImageView = {
         let iv = UIImageView()
-        iv.image = UIImage(named: "sky") // 프로젝트에 'sky'라는 이미지 추가 필요
+        iv.image = UIImage(named: "sky") // 프로젝트에 'sky' 이미지 추가 필요
         iv.contentMode = .scaleAspectFill
+        iv.alpha = 0.5
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        iv.tag = 999
         return iv
     }()
+    
     // MARK: - UI 컴포넌트
     let cityLabel: UILabel = {
         let label = UILabel()
@@ -109,56 +113,72 @@ class WeatherViewController: UIViewController {
 
     // MARK: - UI 셋업
     func setupUI() {
-        // 기본 배경색
+        view.backgroundColor = .systemBlue
 
-        // 배경 이미지 뷰 (날씨에 따라 바뀜)
-        let backgroundImageView = UIImageView(frame: view.bounds)
-        backgroundImageView.contentMode = .scaleAspectFill
-        backgroundImageView.tag = 999
-        backgroundImageView.alpha = 0.5
-        view.insertSubview(backgroundImageView, at: 0)
+        // 배경 이미지 뷰 추가 및 제약
+        view.addSubview(backgroundImageView)
+        NSLayoutConstraint.activate([
+            backgroundImageView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backgroundImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
 
-        [cityLabel, temperatureLabel, weatherDescriptionLabel, weatherIconView,
-         humidityLabel, windSpeedLabel, citySelectButton, unitToggleButton].forEach {
-            view.addSubview($0)
-        }
+        // UIScrollView 추가 (Pull to Refresh를 위한)
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.alwaysBounceVertical = true
+        scrollView.backgroundColor = .clear
+        scrollView.delegate = self
+        view.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        scrollView.addSubview(cityLabel)
+        scrollView.addSubview(temperatureLabel)
+        scrollView.addSubview(weatherIconView)
+        scrollView.addSubview(weatherDescriptionLabel)
+        scrollView.addSubview(humidityLabel)
+        scrollView.addSubview(windSpeedLabel)
+        scrollView.addSubview(citySelectButton)
+        scrollView.addSubview(unitToggleButton)
+        scrollView.addSubview(refreshControl)
+
+        refreshControl.addTarget(self, action: #selector(refreshWeather), for: .valueChanged)
 
         NSLayoutConstraint.activate([
-            cityLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            cityLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 40),
+            cityLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            cityLabel.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 40),
 
-            temperatureLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            temperatureLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             temperatureLabel.topAnchor.constraint(equalTo: cityLabel.bottomAnchor, constant: 10),
 
-            weatherIconView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            weatherIconView.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             weatherIconView.topAnchor.constraint(equalTo: temperatureLabel.bottomAnchor, constant: 10),
             weatherIconView.widthAnchor.constraint(equalToConstant: 100),
             weatherIconView.heightAnchor.constraint(equalToConstant: 100),
 
-            weatherDescriptionLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            weatherDescriptionLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             weatherDescriptionLabel.topAnchor.constraint(equalTo: weatherIconView.bottomAnchor, constant: 10),
 
-            humidityLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            humidityLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             humidityLabel.topAnchor.constraint(equalTo: weatherDescriptionLabel.bottomAnchor, constant: 10),
 
-            windSpeedLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            windSpeedLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             windSpeedLabel.topAnchor.constraint(equalTo: humidityLabel.bottomAnchor, constant: 10),
 
-            citySelectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: -60),
+            citySelectButton.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor, constant: -60),
             citySelectButton.topAnchor.constraint(equalTo: windSpeedLabel.bottomAnchor, constant: 30),
 
-            unitToggleButton.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 60),
-            unitToggleButton.centerYAnchor.constraint(equalTo: citySelectButton.centerYAnchor)
-        ])
+            unitToggleButton.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor, constant: 60),
+            unitToggleButton.centerYAnchor.constraint(equalTo: citySelectButton.centerYAnchor),
 
-        // Pull to Refresh 추가
-        let scrollView = UIScrollView(frame: view.bounds)
-        scrollView.alwaysBounceVertical = true
-        scrollView.backgroundColor = .clear
-        scrollView.delegate = self
-        view.insertSubview(scrollView, aboveSubview: backgroundImageView)
-        scrollView.addSubview(refreshControl)
-        refreshControl.addTarget(self, action: #selector(refreshWeather), for: .valueChanged)
+            unitToggleButton.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -40) // 충분히 아래에 공간 주기
+        ])
     }
 
     func setupActions() {
@@ -215,7 +235,6 @@ class WeatherViewController: UIViewController {
         let cities = ["Seoul", "Busan", "Daegu", "Gwangju", "Gangneung"]
         for city in cities {
             alert.addAction(UIAlertAction(title: city, style: .default, handler: { _ in
-                print("도시 선택됨: \(city)")
                 self.fetchWeatherByCityName(city: city)
             }))
         }
@@ -223,9 +242,7 @@ class WeatherViewController: UIViewController {
         present(alert, animated: true)
     }
 
-
     func fetchWeatherByCityName(city: String) {
-        print("도시 이름으로 날씨 요청: \(city)")
         let encodedCity = city.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? city
         let urlString = "https://api.openweathermap.org/data/2.5/weather?q=\(encodedCity)&appid=\(apiKey)&units=metric&lang=kr"
         requestWeather(urlString: urlString)
@@ -251,7 +268,6 @@ class WeatherViewController: UIViewController {
             do {
                 let result = try JSONDecoder().decode(WeatherResponse.self, from: data)
                 DispatchQueue.main.async {
-                    print("날씨 데이터 파싱 성공: \(result.name)")
                     self.updateWeatherUI(with: result)
                 }
             } catch {
@@ -262,7 +278,6 @@ class WeatherViewController: UIViewController {
             }
         }.resume()
     }
-
 
     // MARK: - 온도 단위 토글
     @objc func toggleUnit() {
@@ -285,9 +300,6 @@ class WeatherViewController: UIViewController {
         let urlString = "https://api.openweathermap.org/data/2.5/weather?lat=\(latitude)&lon=\(longitude)&appid=\(apiKey)&units=metric&lang=kr"
         requestWeather(urlString: urlString)
     }
-
-    // MARK: - 날씨 가져오기 (도시 이름)
-
 
     // MARK: - 아이콘 이름 매핑
     func iconName(for condition: String) -> String {
